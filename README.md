@@ -1,25 +1,29 @@
-# BLE-RC-Car-ESP32
-Alternative Hawdware controller for Bluetooth remote controlled car models released by Shell
+# Controller not from the SHELLf
 
-# Hardware replacement for stupid bloatware mobile app
-The apps that come with the car are full of pointless and features that just drain the battery unnecessarily. It's also likely that sooner or later these apps will run out of support and the car will be useless without it. So I made a simple hardware driver based on ESP32
+This is my reimplementation of [This Project](https://github.com/jenkings/BLE-RC-Car-ESP32).  
+And useful link may be also [this one](https://gist.github.com/scrool/e79d6a4cb50c26499746f4fe473b3768). Here is done reverse enginnering.
 
-# What you need:
-- ESP32 WROOM 32D (but alternatively any ESP with BLE support)
-- few buttons
-- 220Ω resistor
-- 10kΩ resistors
-- some power supply module (i have used some USB-C battery charger/manager module and LDO)
+# Tools and parts
 
-# Wiring:
-- buttons connecting the input GPIO pins to ground via 10kΩ resistors. when pressed, they connect +3.3V to GPIO. (pinning by source code in source)
-- LED is connected to ground via 220Ω resistor and to GPIO pin defined by code.
-- rest of ESP connected by documentation, for minimal wiring to bootup. Power, reset, boot and serial line for programming
+- Done using PlatformIO
+- Works with Seeed Studio XIAO ESP32C3
+- Uses Iduino ST1079 as controller (with [this case](https://www.thingiverse.com/thing:1162200))
+- Simple tact switch for turbo
 
-# controlls:
-  There are two types of Shell cars. From Brandbase and from BBurago. You can control them both by this controller. By default the controller is set to look for Brandbase car. When you boot the device while holding turbo button, it switches to BBurago car. 
-  
-  
-  # notes:
-    - service addresses and characteristics of individual cars may vary. If your car has different addresses, you need to change them in the code. You can find them out, for example, by using various android apps used for BLE debugging
-    - lights are not implemented, because i have no car that have lights. Code is prepared for handling that, so you just need to add logic for handling the button and pass it to function, that makes packet for these cars
+# Photo of my setup and connections
+
+![Setup](./image_of_my_setup.jpg)
+![Connections](./esp_controller_connection.png)
+
+# NOTES!
+
+This is simplified code from [This Project](https://github.com/jenkings/BLE-RC-Car-ESP32).  
+It uses exactly UUIDs of BLE Charcteristics and other values that were needed in my case.  
+I post my code because there are changes in how the code connects with Car.  
+The code as is may not be useful for you, but you may find some inspiration to make original project work.
+
+# Upload code
+
+1. To upload code on your ESP32C3 you need to adjust `platformio.ini` with correct board.  
+2. Then change `upload_port` and other parameters (if your board does not handle it)
+3. Upload using `make upload` or copy paste command from there that uses PIO CLI.

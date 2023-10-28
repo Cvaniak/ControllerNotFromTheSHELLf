@@ -1,4 +1,7 @@
+#include <Arduino.h>
 #include "BLEDevice.h"
+#include "esp32-hal-adc.h"
+#include "esp32-hal-gpio.h"
 
 const int button1Pin = 4;
 const int button2Pin = 5;
@@ -6,6 +9,10 @@ const int button3Pin = 14;
 const int button4Pin = 27;
 const int button5Pin = 26;
 const int ledPin = 25;
+
+const int yAxis = A1;
+const int xAxis = A0;
+const int buttoon = 5;
 
 int forward = 0;
 int backward = 0;
@@ -17,9 +24,6 @@ int turbo = 0;
 
 int lamp = 0;
 
-//Brandbase Car:
-static BLEUUID serviceUUID_Brandbase("0000fff0-0000-1000-8000-00805f9b34fb");
-static BLEUUID    charUUID_Brandbase("d44bc439-abfd-45a2-b575-925416129600");
 uint8_t IDLE_COMMAND[] =                 {0x02, 0x5e, 0x69, 0x5a, 0x48, 0xff, 0x2a, 0x43, 0x8c, 0xa6, 0x80, 0xf8, 0x3e, 0x04, 0xe4, 0x5d};
 uint8_t FORWARD_COMMAND[] =              {0x29, 0x60, 0x9c, 0x66, 0x48, 0x52, 0xcf, 0xf1, 0xb0, 0xf0, 0xcb, 0xb9, 0x80, 0x14, 0xbd, 0x2c};
 uint8_t FORWARD_TURBO_COMMAND[] =        {0xe6, 0x55, 0x67, 0xda, 0x8e, 0x6c, 0x56, 0x0d, 0x09, 0xd3, 0x73, 0x3a, 0x7f, 0x47, 0xff, 0x06};
@@ -36,12 +40,6 @@ uint8_t FORWARD_TURBO_RIGHT_COMMAND[] =  {0xfb, 0x97, 0x6f, 0xba, 0x04, 0xaf, 0x
 uint8_t BACKWARD_TURBO_LEFT_COMMAND[] =  {0xd5, 0x4a, 0xd5, 0x58, 0x57, 0xd3, 0x27, 0x74, 0x5f, 0x14, 0x1d, 0xd0, 0x0d, 0x67, 0x15, 0x95};
 uint8_t BACKWARD_TURBO_RIGHT_COMMAND[] = {0x80, 0xdf, 0xb2, 0x16, 0x5f, 0x32, 0x60, 0xf1, 0xd9, 0x83, 0x77, 0x50, 0xf4, 0x3a, 0x43, 0xda};
 
-//Burago car
-/*
-static BLEUUID serviceUUID_BBurago("00006936-0000-1000-8000-00805f9b34fb");
-static BLEUUID    charUUID_BBurago("0000fe01-0000-1000-8000-00805f9b34fb");
-*/
-
 static BLEUUID serviceUUID_BBurago("0000fff0-0000-1000-8000-00805f9b34fb");
 static BLEUUID    charUUID_BBurago("0000fff1-0000-1000-8000-00805f9b34fb");
 
@@ -49,12 +47,15 @@ uint8_t BBurago_command[] = {0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
 
 boolean switchedToBBurago = false;
-static boolean doConnect = false;
+static boolean doConnect = true;
 static boolean connected = false;
 static boolean doScan = false;
 static BLERemoteCharacteristic* pRemoteCharacteristic;
 static BLEAdvertisedDevice* myDevice;
 
+
+int scanTime = 5; //In seconds
+BLEScan* pBLEScan;
 
 
 
@@ -82,6 +83,8 @@ class MyClientCallback : public BLEClientCallbacks {
 };
 
 bool connectToServer() {
+  Serial.print("Start scan");
+  BLEScanResults foundDevices = pBLEScan->start(scanTime, false);
   Serial.print("Forming a connection to ");
   Serial.println(myDevice->getAddress().toString().c_str());
   BLEClient*  pClient  = BLEDevice::createClient();
@@ -89,41 +92,24 @@ bool connectToServer() {
   pClient->setClientCallbacks(new MyClientCallback());
   pClient->connect(myDevice);
   Serial.println(" - Connected to server");
-  pClient->setMTU(517);
 
   BLERemoteService* pRemoteService;
-  if (!switchedToBBurago)
-    pRemoteService = pClient->getService(serviceUUID_Brandbase);
-  else
-    pRemoteService = pClient->getService(serviceUUID_BBurago);
+  pRemoteService = pClient->getService(serviceUUID_BBurago);
 
   if (pRemoteService == nullptr) {
     Serial.print("Failed to find our service UUID: ");
-    if (!switchedToBBurago)
-      Serial.println(serviceUUID_Brandbase.toString().c_str());
-    else
-      Serial.println(serviceUUID_BBurago.toString().c_str());
+    Serial.println(serviceUUID_BBurago.toString().c_str());
     pClient->disconnect();
     return false;
   }
   Serial.println(" - Found our service");
 
-  if (!switchedToBBurago){
-    pRemoteCharacteristic = pRemoteService->getCharacteristic(charUUID_Brandbase);
-    if (pRemoteCharacteristic == nullptr) {
-      Serial.print("Failed to find our characteristic UUID: ");
-      Serial.println(charUUID_Brandbase.toString().c_str());
-      pClient->disconnect();
-      return false;
-    }
-  }else{
-    pRemoteCharacteristic = pRemoteService->getCharacteristic(charUUID_BBurago);
-    if (pRemoteCharacteristic == nullptr) {
-      Serial.print("Failed to find our characteristic UUID: ");
-      Serial.println(charUUID_BBurago.toString().c_str());
-      pClient->disconnect();
-      return false;
-    }
+  pRemoteCharacteristic = pRemoteService->getCharacteristic(charUUID_BBurago);
+  if (pRemoteCharacteristic == nullptr) {
+    Serial.print("Failed to find our characteristic UUID: ");
+    Serial.println(charUUID_BBurago.toString().c_str());
+    pClient->disconnect();
+    return false;
   }
 
   
@@ -147,30 +133,17 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
       Serial.print("BLE Advertised Device found: ");
       Serial.println(advertisedDevice.toString().c_str());
 
-      if (!switchedToBBurago) {
-        if (advertisedDevice.haveServiceUUID() && advertisedDevice.isAdvertisingService(serviceUUID_Brandbase)) {
-          BLEDevice::getScan()->stop();
-          myDevice = new BLEAdvertisedDevice(advertisedDevice);
-          doConnect = true;
-          doScan = true;
-        }
-      } else {
-        if (advertisedDevice.haveServiceUUID()) {
-          BLEDevice::getScan()->stop();
-          myDevice = new BLEAdvertisedDevice(advertisedDevice);
-          doConnect = true;
-          doScan = true;
-        }
+      if (advertisedDevice.haveServiceUUID()) {
+        BLEDevice::getScan()->stop();
+        myDevice = new BLEAdvertisedDevice(advertisedDevice);
+        doConnect = true;
+        doScan = true;
       }
+      Serial.println("This One Done");
 
 
     }
 };
-
-
-
-
-
 
 uint8_t* getBrandbaseCommand(uint8_t turboOn, uint8_t forwardOn, uint8_t backwardOn, uint8_t leftOn, uint8_t rightOn) {
   if (!leftOn && !rightOn && !forwardOn && !backwardOn) {
@@ -241,58 +214,74 @@ uint8_t* getBBuragoCommand(uint8_t turboOn, uint8_t forwardOn, uint8_t backwardO
   return BBurago_command;
 }
 
-
-
-
-
-
-
-
-
-
 void setup() {
   Serial.begin(115200);
-  pinMode(button1Pin, INPUT);
-  pinMode(button2Pin, INPUT);
-  pinMode(button3Pin, INPUT);
-  pinMode(button4Pin, INPUT);
-  pinMode(button5Pin, INPUT);
-  pinMode(ledPin, OUTPUT);
-
-
-  if (digitalRead(button5Pin) == 1)
-    switchedToBBurago = true;
-
+  pinMode(buttoon, INPUT_PULLUP);
 
   BLEDevice::init("");
-  BLEScan* pBLEScan = BLEDevice::getScan();
+
+  pBLEScan = BLEDevice::getScan();
   pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
   pBLEScan->setInterval(1349);
   pBLEScan->setWindow(449);
   pBLEScan->setActiveScan(true);
-  pBLEScan->start(5, false);
+
+  delay(2000);
 }
 
-void loop() {
-  forward = digitalRead(button1Pin);
-  backward = digitalRead(button2Pin);
-  right = digitalRead(button3Pin);
-  left = digitalRead(button4Pin);
 
-  if (turboTmp == 0 && digitalRead(button5Pin) == 1) {
+int a = 0;
+void loop() {
+  long valueY = analogRead(yAxis);
+  long valueX = analogRead(xAxis);
+  int buttonValue = digitalRead(buttoon);
+
+  if(valueX < 3000){
+    left = 1;
+    right = 0;
+  } else if(valueX > 4000){
+    right = 1;
+    left = 0;
+  }else{
+    right = 0;
+    left = 0;
+  }
+
+  if(valueY < 3000){
+    backward = 1;
+    forward = 0;
+  } else if(valueY > 4000){
+    backward = 0;
+    forward = 1;
+  }else{
+    backward = 0;
+    forward = 0;
+  }
+  Serial.println(valueX);
+  Serial.println(valueY);
+  Serial.println(left);
+  Serial.println(right);
+  Serial.println(forward);
+  Serial.println(backward);
+  Serial.println(buttonValue);
+  Serial.println(turbo);
+
+  turbo = 0;
+
+  if (turboTmp == 0 && 0 == 1) {
     if (turbo == 0)
       turbo = 1;
     else
       turbo = 0;
   }
 
-  turboTmp = digitalRead(button5Pin);
-
-  if (turbo) {
-    digitalWrite(ledPin, HIGH);
-  } else {
-    digitalWrite(ledPin, LOW);
+  if(1-buttonValue){
+    backward = 1;
+    forward = 0;
+    turbo = 0;
   }
+
+  turboTmp = 0;
 
   if (doConnect == true) {
     if (connectToServer()) {
@@ -304,15 +293,11 @@ void loop() {
   }
 
   if (connected) {
-    Serial.println("sending");
-    if (!switchedToBBurago)
-      pRemoteCharacteristic->writeValue(getBrandbaseCommand(turbo, forward, backward, left, right), 16);
-    else {
-      pRemoteCharacteristic->writeValue(getBBuragoCommand(turbo, forward, backward, left, right, 0), 8);
-    }
+    pRemoteCharacteristic->writeValue(getBBuragoCommand(turbo, forward, backward, left, right, 1-buttonValue), 8);
   } else if (doScan) {
-    BLEDevice::getScan()->start(0);
+    Serial.println("REconnect +===");
+    doConnect = true;
   }
 
-  delay(10);
+  delay(5);
 }
